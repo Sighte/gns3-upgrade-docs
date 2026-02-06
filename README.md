@@ -235,7 +235,138 @@ journalctl -u gns3-server -f   # Logs ansehen
 | `/home/academy/.config/GNS3/3.0/gns3_controller.db` | Benutzer-Datenbank (SQLite) |
 | `/home/academy/.config/GNS3/3.0/gns3_server.log` | Server-Logdatei |
 | `/home/academy/GNS3/projects/` | Projektverzeichnis |
-| `/root/gns3_backup_20260202/` | Vollständiges Backup |
+| `/opt/gns3-scripts/manage_users.py` | Multi-User Schulungs-Verwaltungsskript |
+
+---
+
+## Multi-User Schulungsbetrieb
+
+### Übersicht
+
+GNS3 3.x unterstützt Multi-User mit RBAC (Role-Based Access Control). Für Schulungen wird jeder Teilnehmer ein eigener Account mit eigenen Projektkopien erstellt.
+
+**Konzept:**
+- Die Master-Projekte (SSRBasic, TalentLab) dienen als Vorlage
+- Pro User werden die Projekte über die GNS3 API dupliziert
+- ACL sorgt dafür, dass jeder User nur seine eigenen Projekte öffnen kann
+- Master-Projekte sind für User gesperrt (HTTP 403)
+
+### Voraussetzungen
+
+**Speicherbedarf pro User:** ~21.4 GB (SSRBasic ~20 GB + TalentLab ~1.4 GB)
+
+| Anzahl User | Zusätzlicher Bedarf | Empfohlene Disk-Größe |
+|---|---|---|
+| 2 | ~43 GB | ~80 GB |
+| 5 | ~107 GB | ~145 GB |
+| 10 | ~214 GB | ~250 GB |
+
+**Disk-Erweiterung (Proxmox LXC auf ZFS):**
+```bash
+# Auf dem Proxmox-Host - Quota erhöhen:
+zfs set refquota=<ZIELGRÖSSE> rpool/data/subvol-131-disk-0
+
+# Alternativ:
+pct resize 131 rootfs +100G
+```
+
+**Hinweis:** `pct resize` funktioniert möglicherweise nicht korrekt mit ZFS-Subvolumes. In diesem Fall die `refquota` direkt setzen.
+
+### Abhängigkeiten
+
+Folgende Pakete müssen installiert sein (wurden am 2026-02-06 nachinstalliert):
+
+```bash
+# uBridge (aus Source kompiliert, da kein apt-Paket verfügbar)
+# Source: https://github.com/GNS3/ubridge
+apt-get install -y libpcap-dev git make gcc
+cd /tmp && git clone https://github.com/GNS3/ubridge.git
+cd /tmp/ubridge && make
+cp /tmp/ubridge/ubridge /usr/bin/ubridge
+setcap cap_net_admin,cap_net_raw=ep /usr/bin/ubridge
+
+# Dynamips (aus apt)
+apt-get install -y dynamips
+```
+
+### Verwaltungsskript
+
+**Pfad:** `/opt/gns3-scripts/manage_users.py`
+
+```bash
+# User erstellen (z.B. 5 User: user1-user5, Passwort: schulung123)
+/opt/gns3-scripts/manage_users.py create --users 5
+
+# Mit eigenem Prefix und Passwort
+/opt/gns3-scripts/manage_users.py create --users 3 --prefix student --password geheim123
+
+# Alle User und Projekte anzeigen
+/opt/gns3-scripts/manage_users.py list
+
+# Alle User mit Prefix löschen (inkl. Projekte)
+/opt/gns3-scripts/manage_users.py delete --prefix user
+
+# Einzelnen User löschen
+/opt/gns3-scripts/manage_users.py delete --name user3
+```
+
+### ACL-Strategie
+
+Pro User werden folgende ACL-Einträge erstellt:
+
+| ACL | Pfad | Rolle | Allowed | Zweck |
+|---|---|---|---|---|
+| Basis-Zugriff | `/` | User | true | API-Zugriff (Templates, Images, etc.) |
+| Master-Sperre | `/projects/<master_id>` | User | false | Master-Projekte nicht öffenbar |
+| Projekt-Zugriff | `/projects/<user_projekt_id>` | User | true | Eigene Projekte voll nutzbar |
+
+**Ergebnis:** User sehen Master-Projekte in der Liste, können sie aber **nicht öffnen** (HTTP 403). Eigene Projekte funktionieren normal.
+
+### Workflow für eine Schulung
+
+```bash
+# 1. Vor der Schulung: User erstellen
+/opt/gns3-scripts/manage_users.py create --users 5
+
+# 2. Zugangsdaten an Teilnehmer verteilen
+#    URL: http://100.64.0.73:3080
+#    Username: user1, user2, ... user5
+#    Passwort: schulung123
+
+# 3. Nach der Schulung: User und Projekte löschen
+/opt/gns3-scripts/manage_users.py delete --prefix user
+```
+
+---
+
+## Fehlerbehebungen (2026-02-06)
+
+### HTTP 500 beim Projekt-Öffnen
+
+**Ursache:** Festplatte zu 97% voll (2.2 GB frei). GNS3 3.0.5 hat einen Bug: Bei wenig Speicherplatz versucht der Server eine Warnung zu senden (`project.emit`), aber der Worker-Thread hat keinen Zugriff auf die asyncio Event-Loop → `RuntimeError: no running event loop` → HTTP 500.
+
+**Lösung:** Speicherplatz freigeben:
+- Upgrade-Backup gelöscht (`/root/gns3_backup_20260202/`, 31 GB)
+- APT-Cache bereinigt (`apt clean`, 1.4 GB)
+- 43 gestoppte Docker-Container entfernt (`docker container prune`)
+- Alte Downloads gelöscht (103 MB)
+
+### Projektname-Mismatch bei Duplizierung
+
+**Problem:** Der GNS3 Controller kannte das Projekt als "SSR Basics" (mit Leerzeichen), aber die Datei hieß "SSRBasic.gns3". Beim Duplizieren suchte GNS3 nach dem falschen Dateinamen.
+
+**Lösung:** Projektname im Controller angepasst:
+```bash
+curl -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  http://127.0.0.1:3080/v3/projects/<PROJECT_ID> \
+  -d '{"name":"SSRBasic"}'
+```
+
+### uBridge fehlt
+
+**Problem:** `uBridge is not available` beim Duplizieren von Projekten.
+
+**Lösung:** uBridge aus Source kompiliert und Capabilities gesetzt (siehe Abhängigkeiten oben).
 
 ---
 
