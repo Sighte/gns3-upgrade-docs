@@ -47,7 +47,7 @@ PROXMOX_STORAGE = "local-lvm"  # Storage für die Klone - ggf. anpassen
 KEYCLOAK_HOST = "https://auth.academy.nocware.com"
 KEYCLOAK_REALM = "master"
 KEYCLOAK_ADMIN_USER = "admin"
-KEYCLOAK_ADMIN_PASS = "HIER_KEYCLOAK_ADMIN_PASSWORT"  # <-- ANPASSEN
+KEYCLOAK_ADMIN_PASS = "6QAG9N3XZa00JPgyy4TY"  # <-- ANPASSEN
 
 # --- GNS3 ---
 GNS3_HOST = "http://100.64.0.73:3080"
@@ -66,7 +66,7 @@ GNS3_ROLE_USER = "1ac9799b-4e41-4968-8a4a-3b26cfa40a91"
 # --- Guacamole ---
 GUACAMOLE_HOST = "https://lab.nocware.com"
 GUACAMOLE_ADMIN_USER = "guacadmin"
-GUACAMOLE_ADMIN_PASS = "HIER_GUACAMOLE_ADMIN_PASSWORT"  # <-- ANPASSEN
+GUACAMOLE_ADMIN_PASS = "3JSalbY84Se6nUOaB6SN"  # <-- ANPASSEN
 GUACAMOLE_DATASOURCE = "mysql"  # oder "postgresql"
 
 # --- Allgemein ---
