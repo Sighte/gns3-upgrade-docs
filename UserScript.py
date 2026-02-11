@@ -23,19 +23,22 @@ Voraussetzungen:
 """
 
 import argparse
+import http.cookiejar
 import json
+import re
 import ssl
 import sys
 import time
-import urllib.request
 import urllib.error
+import urllib.parse
+import urllib.request
 
 # =============================================================================
 # KONFIGURATION - HIER ANPASSEN
 # =============================================================================
 
 # --- Proxmox ---
-PROXMOX_HOST = "https://proxmox01a:8006"
+PROXMOX_HOST = "https://10.128.10.1:8006"
 PROXMOX_NODE = "proxmox01a"
 PROXMOX_TOKEN = "root@pam!UserScript=8c1bab2b-2a4d-428a-a94c-5ab1a2e5a250"
 PROXMOX_TEMPLATE_ID = 133
@@ -394,16 +397,108 @@ class Guacamole:
         self.token = None
 
     def authenticate(self):
-        """Admin-Token holen."""
-        url = f"{GUACAMOLE_HOST}/api/tokens"
-        data = f"username={GUACAMOLE_ADMIN_USER}&password={GUACAMOLE_ADMIN_PASS}".encode()
-        headers = {"Content-Type": "application/x-www-form-urlencoded"}
-        result = http_request("POST", url, headers=headers, data=data)
-        if result and "authToken" in result:
-            self.token = result["authToken"]
-            return True
-        print("    FEHLER: Guacamole-Authentifizierung fehlgeschlagen!")
-        return False
+        """Admin-Token via Keycloak OIDC Implicit Flow holen.
+
+        Guacamole nutzt OpenID Connect mit Nonce-Validierung. Der Flow ist:
+        1. POST an Guacamole /api/tokens -> 403 mit Redirect-URL inkl. Nonce
+        2. GET Keycloak Auth-Seite -> Login-Formular
+        3. POST Credentials an Keycloak -> Redirect mit id_token im Fragment
+        4. POST id_token an Guacamole /api/tokens -> authToken
+        """
+        try:
+            cj = http.cookiejar.CookieJar()
+            opener = urllib.request.build_opener(
+                urllib.request.HTTPSHandler(context=SSL_CTX),
+                urllib.request.HTTPCookieProcessor(cj),
+            )
+
+            # Schritt 1: Nonce von Guacamole holen
+            req = urllib.request.Request(
+                f"{GUACAMOLE_HOST}/api/tokens",
+                data=b"",
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                method="POST",
+            )
+            try:
+                opener.open(req, timeout=10)
+            except urllib.error.HTTPError as e:
+                body = json.loads(e.read().decode())
+                expected = body.get("expected", [])
+                if not expected or "redirectUrl" not in expected[0]:
+                    print("    FEHLER: Guacamole OIDC-Redirect nicht erhalten!")
+                    return False
+                redirect_url = expected[0]["redirectUrl"]
+
+            parsed = urllib.parse.urlparse(redirect_url)
+            qs = urllib.parse.parse_qs(parsed.query)
+            nonce = qs["nonce"][0]
+
+            # Schritt 2: Keycloak Login-Seite laden
+            with opener.open(urllib.request.Request(redirect_url), timeout=10) as resp:
+                html = resp.read().decode()
+            action_match = re.search(r'action="([^"]+)"', html)
+            if not action_match:
+                print("    FEHLER: Keycloak Login-Formular nicht gefunden!")
+                return False
+            action_url = action_match.group(1).replace("&amp;", "&")
+
+            # Schritt 3: Credentials an Keycloak senden, Redirect abfangen
+            class _RedirectCatcher(urllib.request.HTTPRedirectHandler):
+                def redirect_request(self, req, fp, code, msg, headers, newurl):
+                    self.redirect_url = newurl
+                    raise urllib.error.HTTPError(newurl, code, msg, headers, fp)
+
+            catcher = _RedirectCatcher()
+            login_opener = urllib.request.build_opener(
+                urllib.request.HTTPSHandler(context=SSL_CTX),
+                urllib.request.HTTPCookieProcessor(cj),
+                catcher,
+            )
+            login_data = urllib.parse.urlencode({
+                "username": KEYCLOAK_ADMIN_USER,
+                "password": KEYCLOAK_ADMIN_PASS,
+            }).encode()
+            login_req = urllib.request.Request(
+                action_url,
+                data=login_data,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                method="POST",
+            )
+            try:
+                login_opener.open(login_req, timeout=10)
+                print("    FEHLER: Keycloak-Login hat keinen Redirect ausgelöst!")
+                return False
+            except urllib.error.HTTPError as e:
+                location = e.headers.get("Location", "") or getattr(catcher, "redirect_url", "")
+
+            if "#" not in location:
+                print("    FEHLER: Keycloak-Redirect enthält kein id_token-Fragment!")
+                return False
+
+            fragment = location.split("#", 1)[1]
+            frag_params = urllib.parse.parse_qs(fragment)
+            id_token = frag_params.get("id_token", [None])[0]
+            if not id_token:
+                print("    FEHLER: Kein id_token im Keycloak-Redirect!")
+                return False
+
+            # Schritt 4: id_token an Guacamole übergeben
+            guac_data = f"id_token={id_token}".encode()
+            result = http_request(
+                "POST",
+                f"{GUACAMOLE_HOST}/api/tokens",
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                data=guac_data,
+            )
+            if result and "authToken" in result:
+                self.token = result["authToken"]
+                return True
+            print("    FEHLER: Guacamole hat das Keycloak-Token abgelehnt!")
+            return False
+
+        except Exception as e:
+            print(f"    FEHLER: Guacamole-Authentifizierung fehlgeschlagen: {e}")
+            return False
 
     def _url(self, path):
         return f"{GUACAMOLE_HOST}/api/session/data/{GUACAMOLE_DATASOURCE}{path}?token={self.token}"
