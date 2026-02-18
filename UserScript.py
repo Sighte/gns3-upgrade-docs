@@ -330,6 +330,10 @@ class GNS3:
         })
         return result
 
+    def stop_nodes(self, project_id):
+        """Alle Nodes eines Projekts stoppen."""
+        http_request("POST", f"{GNS3_HOST}/v3/projects/{project_id}/nodes/stop", headers=self._headers())
+
     def close_project(self, project_id):
         """Projekt schließen."""
         http_request("POST", f"{GNS3_HOST}/v3/projects/{project_id}/close", headers=self._headers())
@@ -360,8 +364,10 @@ class GNS3:
             projects = GNS3_MASTER_PROJECTS
         user_projects = []
 
-        # Master-Projekte schließen und duplizieren
+        # Master-Projekte stoppen, schließen und duplizieren
         for proj_name, proj_id in projects.items():
+            self.stop_nodes(proj_id)
+            time.sleep(2)
             self.close_project(proj_id)
             time.sleep(1)
             dup_name = f"{proj_name}_{username}"
