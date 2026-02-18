@@ -652,6 +652,7 @@ def cmd_create(args):
 
         # --- 2. KEYCLOAK: User anlegen ---
         print(f"\n[2/5] Keycloak - User anlegen...")
+        kc.authenticate()
         kc_user = kc.create_user(username, password)
         if kc_user:
             print(f"    ✓ Keycloak-User '{username}' erstellt (ID: {kc_user['id'][:8]}...)")
@@ -660,6 +661,7 @@ def cmd_create(args):
 
         # --- 3. GNS3: User + Projekte ---
         print(f"\n[3/5] GNS3 - User und Projekte anlegen...")
+        gns3.authenticate()
         gns3_user = gns3.create_user(username, password)
         if gns3_user:
             print(f"    ✓ GNS3-User '{username}' erstellt")
@@ -671,6 +673,7 @@ def cmd_create(args):
 
         # --- 4. GUACAMOLE: RDP-Verbindung ---
         print(f"\n[4/5] Guacamole - RDP-Verbindung erstellen...")
+        guac.authenticate()
         conn_name = f"Training-{username} (CT {vmid})"
         connection = guac.create_connection(conn_name, container_ip)
         if connection and "identifier" in connection:
