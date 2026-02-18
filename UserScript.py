@@ -354,12 +354,14 @@ class GNS3:
             "allowed": allowed,
         })
 
-    def setup_user_projects(self, user_id, username):
+    def setup_user_projects(self, user_id, username, projects=None):
         """Projekte duplizieren und ACL setzen (Logik aus bestehendem Skript)."""
+        if projects is None:
+            projects = GNS3_MASTER_PROJECTS
         user_projects = []
 
         # Master-Projekte schließen und duplizieren
-        for proj_name, proj_id in GNS3_MASTER_PROJECTS.items():
+        for proj_name, proj_id in projects.items():
             self.close_project(proj_id)
             time.sleep(1)
             dup_name = f"{proj_name}_{username}"
@@ -373,7 +375,7 @@ class GNS3:
         self.create_acl(user_id, "/", GNS3_ROLE_USER, propagate=True, allowed=True)
 
         # ACL: Master-Projekte sperren
-        for master_name, master_pid in GNS3_MASTER_PROJECTS.items():
+        for master_name, master_pid in projects.items():
             self.create_acl(user_id, f"/projects/{master_pid}", GNS3_ROLE_USER, propagate=True, allowed=False)
 
         # ACL: Eigene Projekte erlauben
@@ -573,6 +575,18 @@ def cmd_create(args):
     """Komplette Provisionierung: VM + Keycloak + GNS3 + Guacamole."""
     password = args.password or DEFAULT_PASSWORD
 
+    # Username-Liste aufbauen
+    if args.name:
+        usernames = [args.name]
+    else:
+        usernames = [f"{args.prefix}{i}" for i in range(1, args.users + 1)]
+
+    # Projekte filtern
+    if args.projects:
+        selected_projects = {k: v for k, v in GNS3_MASTER_PROJECTS.items() if k in args.projects}
+    else:
+        selected_projects = GNS3_MASTER_PROJECTS
+
     # Alle Dienste authentifizieren
     print("\n[0/5] Authentifizierung bei allen Diensten...")
     pve = Proxmox()
@@ -595,8 +609,7 @@ def cmd_create(args):
 
     results = []
 
-    for i in range(1, args.users + 1):
-        username = f"{args.prefix}{i}"
+    for username in usernames:
         print(f"\n{'='*60}")
         print(f"  Provisioniere: {username}")
         print(f"{'='*60}")
@@ -650,7 +663,7 @@ def cmd_create(args):
         gns3_user = gns3.create_user(username, password)
         if gns3_user:
             print(f"    ✓ GNS3-User '{username}' erstellt")
-            gns3_projects = gns3.setup_user_projects(gns3_user["user_id"], username)
+            gns3_projects = gns3.setup_user_projects(gns3_user["user_id"], username, selected_projects)
             print(f"    ✓ {len(gns3_projects)} Projekte dupliziert und berechtigt")
         else:
             print(f"    WARNUNG: GNS3-User konnte nicht erstellt werden")
@@ -866,9 +879,16 @@ def main():
 
     # create
     p_create = sub.add_parser("create", help="Teilnehmer komplett provisionieren")
-    p_create.add_argument("--users", type=int, required=True, help="Anzahl Teilnehmer")
+    name_group = p_create.add_mutually_exclusive_group(required=True)
+    name_group.add_argument("--name", help="Einzelner Username (explizit)")
+    name_group.add_argument("--users", type=int, help="Anzahl Teilnehmer (mit --prefix)")
     p_create.add_argument("--prefix", default="user", help="Username-Prefix (default: user)")
     p_create.add_argument("--password", default=None, help=f"Passwort (default: {DEFAULT_PASSWORD})")
+    p_create.add_argument(
+        "--projects", nargs="+", default=None,
+        metavar="PROJEKT",
+        help=f"Zu klonende Projekte (default: alle). Erlaubt: {', '.join(GNS3_MASTER_PROJECTS)}",
+    )
 
     # list
     sub.add_parser("list", help="Übersicht aller Schulungsumgebungen")
@@ -881,6 +901,14 @@ def main():
     args = parser.parse_args()
 
     if args.command == "create":
+        if args.name and args.prefix != "user":
+            print("WARNUNG: --prefix wird ignoriert wenn --name angegeben ist.")
+        if args.projects:
+            unknown = [p for p in args.projects if p not in GNS3_MASTER_PROJECTS]
+            if unknown:
+                print(f"FEHLER: Unbekannte Projekte: {', '.join(unknown)}")
+                print(f"  Verfügbar: {', '.join(GNS3_MASTER_PROJECTS)}")
+                sys.exit(1)
         cmd_create(args)
     elif args.command == "list":
         cmd_list(args)
