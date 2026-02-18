@@ -112,8 +112,8 @@ openid-username-claim-type: preferred_username
 
 ## GNS3 3.0.5 Upgrade-Dokumentation
 
-**Datum:** 2026-02-02 bis 2026-02-04  
-**System:** Ubuntu 20.04.6 LTS auf Proxmox VE (VM: `talentlab026`)
+**Datum:** 2026-02-02 bis 2026-02-04
+**System:** Ubuntu 20.04.6 LTS auf Proxmox VE (VM: `talentlab026`) — mittlerweile auf **Ubuntu 24.04.4 LTS** upgegraded
 
 ### Ausgangssituation → Ergebnis
 
@@ -483,6 +483,13 @@ journalctl -u gns3-server -f    # Logs ansehen
 **Compute nicht verbunden:** Sicherstellen, dass `--local` Flag im Service gesetzt ist. Server neustarten: `systemctl restart gns3-server`.
 
 **Authentifizierung fehlgeschlagen:** Passwort in SQLite-Datenbank zurücksetzen (siehe Upgrade Schritt 7). Server neustarten.
+
+**Guacamole-RDP-Verbindung schlägt fehl (xrdp 0.9.21+ / OpenSSL 3.x):** Fehlerbild: Verbindung bricht sofort ab. In xrdp-Logs: `libxrdp_force_read: header read error` + `Processing [ITU-T T.125] Connect-Initial failed`. Ursache: xrdp 0.9.21+ mit OpenSSL 3.x ist inkompatibel mit `security_layer=negotiate` + `crypt_level=high` für Guacamoles FreeRDP-Client. Fix in `/etc/xrdp/xrdp.ini`:
+```ini
+security_layer=tls   ; statt negotiate
+crypt_level=low      ; statt high
+```
+Dann `systemctl restart xrdp`. Betrifft Ubuntu 24.04 mit xrdp 0.9.24.
 
 ### Rollback auf GNS3 2.2.x
 
