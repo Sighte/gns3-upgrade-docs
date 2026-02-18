@@ -41,10 +41,10 @@ import urllib.request
 PROXMOX_HOST = "https://10.128.10.1:8006"
 PROXMOX_NODE = "proxmox01a"
 PROXMOX_TOKEN = "root@pam!UserScript=8c1bab2b-2a4d-428a-a94c-5ab1a2e5a250"
-PROXMOX_TEMPLATE_ID = 133
+PROXMOX_TEMPLATE_ID = 135
 PROXMOX_BRIDGE = "vmbr2"
 PROXMOX_START_VMID = 200       # Ab welcher ID neue Container erstellt werden
-PROXMOX_STORAGE = "local-lvm"  # Storage für die Klone - ggf. anpassen
+PROXMOX_STORAGE = "neuer-pool-storage"  # ZFS pool with available space
 
 # --- Keycloak ---
 KEYCLOAK_HOST = "https://auth.academy.nocware.com"
@@ -137,8 +137,16 @@ class Proxmox:
             vmid += 1
         return vmid
 
+    def unlock_container(self, vmid):
+        """Lock von Container entfernen."""
+        self._api("PUT", f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/config", data={"delete": "lock"})
+
     def clone_container(self, new_vmid, hostname):
-        """LXC Container aus Template klonen."""
+        """LXC Container aus Template klonen. Returns UPID string or None."""
+        # Template entsperren falls von vorherigem Fehlversuch gesperrt
+        self.unlock_container(PROXMOX_TEMPLATE_ID)
+        time.sleep(1)
+
         data = {
             "newid": new_vmid,
             "hostname": hostname,
@@ -150,7 +158,9 @@ class Proxmox:
             f"/nodes/{PROXMOX_NODE}/lxc/{PROXMOX_TEMPLATE_ID}/clone",
             data=data,
         )
-        return result is not None
+        if result and "data" in result and result["data"]:
+            return result["data"]  # UPID string
+        return None
 
     def configure_network(self, vmid):
         """Netzwerk auf DHCP setzen (vmbr2)."""
@@ -161,11 +171,11 @@ class Proxmox:
 
     def start_container(self, vmid):
         """Container starten."""
-        return self._api("POST", f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/status/start")
+        return self._api("POST", f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/status/start", data={})
 
     def stop_container(self, vmid):
         """Container stoppen."""
-        return self._api("POST", f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/status/stop")
+        return self._api("POST", f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/status/stop", data={})
 
     def delete_container(self, vmid):
         """Container löschen (muss gestoppt sein)."""
@@ -178,7 +188,7 @@ class Proxmox:
         print(f"    Warte auf IP-Adresse (max {retries * interval}s)...", end="", flush=True)
         for i in range(retries):
             result = self._api("GET", f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/interfaces")
-            if result and "data" in result:
+            if result and result.get("data"):
                 for iface in result["data"]:
                     if iface.get("name") != "lo" and iface.get("inet"):
                         ip = iface["inet"].split("/")[0]
@@ -194,16 +204,21 @@ class Proxmox:
         result = self._api("GET", f"/nodes/{PROXMOX_NODE}/lxc")
         return result.get("data", []) if result else []
 
-    def wait_for_task(self, upid, timeout=120):
+    def wait_for_task(self, upid, timeout=600):
         """Auf Proxmox-Task warten."""
         if not upid:
             return True
+        encoded_upid = urllib.parse.quote(upid, safe="")
         start = time.time()
         while time.time() - start < timeout:
-            result = self._api("GET", f"/nodes/{PROXMOX_NODE}/tasks/{upid}/status")
+            result = self._api("GET", f"/nodes/{PROXMOX_NODE}/tasks/{encoded_upid}/status")
             if result and result.get("data", {}).get("status") == "stopped":
-                return result["data"].get("exitstatus") == "OK"
-            time.sleep(3)
+                exitstatus = result["data"].get("exitstatus", "")
+                if exitstatus == "OK":
+                    return True
+                print(f"    Task fehlgeschlagen: {exitstatus}")
+                return False
+            time.sleep(5)
         return False
 
 
@@ -592,17 +607,25 @@ def cmd_create(args):
         hostname = f"training-{username}"
 
         print(f"    Klone Template {PROXMOX_TEMPLATE_ID} -> CT {vmid} ({hostname})...")
-        if not pve.clone_container(vmid, hostname):
+        upid = pve.clone_container(vmid, hostname)
+        if not upid:
             print(f"    FEHLER beim Klonen! Überspringe {username}.")
             continue
 
-        # Warten bis Klon fertig
+        # Warten bis Klon fertig (67GB, dauert ca. 8-10 Minuten)
         print(f"    Warte auf Abschluss des Klonvorgangs...")
-        time.sleep(15)
+        if not pve.wait_for_task(upid, timeout=900):
+            print(f"    FEHLER: Klonvorgang nicht abgeschlossen! Räume auf...")
+            pve.unlock_container(vmid)
+            pve.delete_container(vmid)
+            pve.unlock_container(PROXMOX_TEMPLATE_ID)
+            print(f"    Überspringe {username}.")
+            continue
+        print(f"    ✓ Klon abgeschlossen")
 
-        # Netzwerk konfigurieren
-        pve.configure_network(vmid)
-        print(f"    Netzwerk konfiguriert (DHCP auf {PROXMOX_BRIDGE})")
+        # Protection deaktivieren (vom Template geerbt)
+        pve._api("PUT", f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/config", data={"protection": 0})
+        print(f"    Netzwerk vom Template übernommen (DHCP auf {PROXMOX_BRIDGE})")
 
         # Container starten
         pve.start_container(vmid)
