@@ -9,6 +9,7 @@ Alle wesentlichen Änderungen an diesem Projekt werden hier dokumentiert.
 ### Behoben
 - **Guacamole RDP-Verbindung funktioniert nicht**: RDP-Credentials (`username: academy`, `password: academy`) werden nun automatisch in die Guacamole-Verbindung eingetragen. Diese Credentials entsprechen dem Standard-User im LXC-Template 135.
 - **Security-Mode von `nla` auf `tls` geändert**: `nla` (Network Level Authentication) ist mit xrdp im Template inkompatibel. `tls` funktioniert korrekt.
+- **Falsche IP in Guacamole-Verbindung**: `get_container_ip()` nahm bisher die erste nicht-loopback IP. Da das LXC-Template mehrere Interfaces hat (`eth0`/vmbr2, `internal`, `docker0`, `virbr0`), wurde manchmal die falsche IP gewählt. Fix: gezielt `eth0` (das konfigurierte DHCP-Interface auf vmbr2) verwenden.
 
 ---
 

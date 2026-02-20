@@ -187,15 +187,21 @@ class Proxmox:
         return self._api("DELETE", f"/nodes/{PROXMOX_NODE}/lxc/{vmid}?purge=1&force=1")
 
     def get_container_ip(self, vmid, retries=12, interval=10):
-        """IP-Adresse des Containers auslesen (wartet auf DHCP)."""
+        """IP-Adresse des Containers auslesen (wartet auf DHCP).
+
+        Gibt gezielt die IP von eth0 zurück (vmbr2-Interface, DHCP).
+        Andere Interfaces (docker0, virbr0, internal) werden ignoriert.
+        """
         print(f"    Warte auf IP-Adresse (max {retries * interval}s)...", end="", flush=True)
         for i in range(retries):
             result = self._api("GET", f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/interfaces")
             if result and result.get("data"):
-                for iface in result["data"]:
-                    if iface.get("name") != "lo" and iface.get("inet"):
+                ifaces = result["data"]
+                # Erst gezielt eth0 suchen (konfiguriertes vmbr2-Interface)
+                for iface in ifaces:
+                    if iface.get("name") == "eth0" and iface.get("inet"):
                         ip = iface["inet"].split("/")[0]
-                        print(f" {ip}")
+                        print(f" {ip} (eth0)")
                         return ip
             print(".", end="", flush=True)
             time.sleep(interval)
