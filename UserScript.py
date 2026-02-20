@@ -69,8 +69,11 @@ GNS3_ROLE_USER = "1ac9799b-4e41-4968-8a4a-3b26cfa40a91"
 # --- Guacamole ---
 GUACAMOLE_HOST = "https://lab.nocware.com"
 GUACAMOLE_ADMIN_USER = "guacadmin"
-GUACAMOLE_ADMIN_PASS = "3JSalbY84Se6nUOaB6SN"  # <-- ANPASSEN
+GUACAMOLE_ADMIN_PASS = "3JSalbY84Se6nUOaB6SN"  # lokaler Login (deaktiviert bei OIDC-only)
 GUACAMOLE_DATASOURCE = "mysql"  # oder "postgresql"
+# Keycloak-User für Guacamole OIDC-Login (muss guacadmin-Rechte in Guacamole haben)
+GUACAMOLE_KEYCLOAK_USER = "guacadmin"
+GUACAMOLE_KEYCLOAK_PASS = "nYVBO4aY0i"
 
 # --- Allgemein ---
 DEFAULT_PASSWORD = "schulung123"
@@ -498,8 +501,8 @@ class Guacamole:
                 catcher,
             )
             login_data = urllib.parse.urlencode({
-                "username": KEYCLOAK_ADMIN_USER,
-                "password": KEYCLOAK_ADMIN_PASS,
+                "username": GUACAMOLE_KEYCLOAK_USER,
+                "password": GUACAMOLE_KEYCLOAK_PASS,
             }).encode()
             login_req = urllib.request.Request(
                 action_url,
@@ -568,6 +571,10 @@ class Guacamole:
         }
         result = http_request("POST", self._url("/connections"), data=data)
         return result
+
+    def create_user(self, username):
+        """User in Guacamole anlegen (damit Berechtigungen vor erstem Login zuweisbar sind)."""
+        return http_request("POST", self._url("/users"), data={"username": username, "attributes": {}})
 
     def assign_connection_to_user(self, username, connection_id):
         """User Zugriff auf eine Verbindung geben."""
@@ -708,7 +715,8 @@ def cmd_create(args):
             conn_id = connection["identifier"]
             print(f"    ✓ Verbindung '{conn_name}' erstellt (ID: {conn_id})")
 
-            # Berechtigung zuweisen
+            # User in Guacamole anlegen (damit Berechtigung vor erstem Login zuweisbar ist)
+            guac.create_user(username)
             guac.assign_connection_to_user(username, conn_id)
             print(f"    ✓ User '{username}' berechtigt")
         else:
