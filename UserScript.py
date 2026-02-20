@@ -560,9 +560,11 @@ class Guacamole:
             "parameters": {
                 "hostname": hostname,
                 "port": str(port),
-                "security": "nla",
+                "security": "tls",
                 "ignore-cert": "true",
                 "resize-method": "display-update",
+                "username": "academy",
+                "password": "academy",
             },
             "attributes": {
                 "max-connections": "2",

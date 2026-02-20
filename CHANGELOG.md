@@ -4,6 +4,14 @@ Alle wesentlichen Änderungen an diesem Projekt werden hier dokumentiert.
 
 ---
 
+## [2026-02-20] – UserScript.py: RDP-Credentials und Security-Mode Fix
+
+### Behoben
+- **Guacamole RDP-Verbindung funktioniert nicht**: RDP-Credentials (`username: academy`, `password: academy`) werden nun automatisch in die Guacamole-Verbindung eingetragen. Diese Credentials entsprechen dem Standard-User im LXC-Template 135.
+- **Security-Mode von `nla` auf `tls` geändert**: `nla` (Network Level Authentication) ist mit xrdp im Template inkompatibel. `tls` funktioniert korrekt.
+
+---
+
 ## [2026-02-20] – UserScript.py: Vollständige Bugfix-Session
 
 ### Behoben
