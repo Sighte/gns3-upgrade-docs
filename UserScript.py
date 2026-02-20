@@ -41,7 +41,7 @@ import urllib.request
 PROXMOX_HOST = "https://10.128.10.1:8006"
 PROXMOX_NODE = "proxmox01a"
 PROXMOX_TOKEN = "root@pam!UserScript=8c1bab2b-2a4d-428a-a94c-5ab1a2e5a250"
-PROXMOX_TEMPLATE_ID = 135
+PROXMOX_TEMPLATE_ID = 201
 PROXMOX_BRIDGE = "vmbr2"
 PROXMOX_START_VMID = 200       # Ab welcher ID neue Container erstellt werden
 PROXMOX_STORAGE = "neuer-pool-storage"  # ZFS pool with available space
