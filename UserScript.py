@@ -53,7 +53,7 @@ KEYCLOAK_ADMIN_USER = "admin"
 KEYCLOAK_ADMIN_PASS = "6QAG9N3XZa00JPgyy4TY"  # <-- ANPASSEN
 
 # --- GNS3 ---
-GNS3_HOST = "http://100.64.0.73:3080"
+GNS3_HOST = "http://100.64.0.80:3080"
 GNS3_ADMIN_USER = "admin"
 GNS3_ADMIN_PASS = "admin123"
 
@@ -89,11 +89,11 @@ SSL_CTX.verify_mode = ssl.CERT_NONE
 
 def http_request(method, url, headers=None, data=None, timeout=300):
     """Universeller HTTP-Request mit SSL-Support."""
-    if headers is None:
-        headers = {}
-    headers.setdefault("Content-Type", "application/json")
+    headers = dict(headers) if headers else {}
 
     body = json.dumps(data).encode() if data and isinstance(data, (dict, list)) else data
+    if body is not None:
+        headers.setdefault("Content-Type", "application/json")
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
 
     try:
@@ -171,11 +171,11 @@ class Proxmox:
 
     def start_container(self, vmid):
         """Container starten."""
-        return self._api("POST", f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/status/start", data={})
+        return self._api("POST", f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/status/start")
 
     def stop_container(self, vmid):
         """Container stoppen."""
-        return self._api("POST", f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/status/stop", data={})
+        return self._api("POST", f"/nodes/{PROXMOX_NODE}/lxc/{vmid}/status/stop")
 
     def delete_container(self, vmid):
         """Container löschen (muss gestoppt sein)."""
@@ -418,8 +418,28 @@ class GNS3:
 class Guacamole:
     def __init__(self):
         self.token = None
+        self.datasource = GUACAMOLE_DATASOURCE
 
     def authenticate(self):
+        """Admin-Token holen - erst lokaler Login, dann OIDC als Fallback."""
+        local_data = urllib.parse.urlencode({
+            "username": GUACAMOLE_ADMIN_USER,
+            "password": GUACAMOLE_ADMIN_PASS,
+        }).encode()
+        result = http_request(
+            "POST",
+            f"{GUACAMOLE_HOST}/api/tokens",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            data=local_data,
+        )
+        if result and "authToken" in result:
+            self.token = result["authToken"]
+            self.datasource = result.get("dataSource", GUACAMOLE_DATASOURCE)
+            return True
+        # Fallback: Keycloak OIDC Implicit Flow
+        return self._authenticate_oidc()
+
+    def _authenticate_oidc(self):
         """Admin-Token via Keycloak OIDC Implicit Flow holen.
 
         Guacamole nutzt OpenID Connect mit Nonce-Validierung. Der Flow ist:
@@ -515,6 +535,8 @@ class Guacamole:
             )
             if result and "authToken" in result:
                 self.token = result["authToken"]
+                self.datasource = result.get("dataSource", GUACAMOLE_DATASOURCE)
+                print(f"    OIDC-Login: datasource='{self.datasource}'")
                 return True
             print("    FEHLER: Guacamole hat das Keycloak-Token abgelehnt!")
             return False
