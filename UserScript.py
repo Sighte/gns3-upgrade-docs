@@ -566,7 +566,6 @@ class Guacamole:
             "parameters": {
                 "hostname": hostname,
                 "port": str(port),
-                "security": "tls",
                 "ignore-cert": "true",
                 "resize-method": "display-update",
                 "username": "academy",
