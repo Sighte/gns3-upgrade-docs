@@ -675,7 +675,7 @@ function loadUsers() {
             html += '<td><span class="badge badge-' + (u.keycloak?'ok':'no') + '">' + (u.keycloak?'OK':'---') + '</span></td>';
             html += '<td><span class="badge badge-' + (u.gns3?'ok':'no') + '">' + (u.gns3?'OK':'---') + '</span></td>';
             html += '<td><span class="badge badge-' + (u.guacamole?'ok':'no') + '">' + (u.guacamole?'OK':'---') + '</span></td>';
-            html += '<td><button class="btn btn-danger btn-sm" onclick="confirmDelete([\'' + u.username + '\'])">Loeschen</button></td>';
+            html += '<td><button class="btn btn-danger btn-sm" onclick="confirmDelete([&quot;' + u.username + '&quot;])">Loeschen</button></td>';
             html += '</tr>';
         });
         html += '</tbody></table>';
