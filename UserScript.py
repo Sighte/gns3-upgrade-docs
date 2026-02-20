@@ -61,6 +61,7 @@ GNS3_ADMIN_PASS = "admin123"
 GNS3_MASTER_PROJECTS = {
     "SSRBasic": "c0518772-8dbe-4b65-ac16-04779af3bac7",
     "TalentLab": "a786a84b-b926-41f1-a26e-73e908117d08",
+    "SSRBGPBasic": "d34db245-d152-43fb-9f16-c6562e61c17d",
 }
 
 # GNS3 Built-in Role IDs
