@@ -22,7 +22,7 @@ import urllib.error
 
 GNS3_HOST = "http://127.0.0.1:3080"
 ADMIN_USER = "admin"
-ADMIN_PASS = "admin123"
+ADMIN_PASS = 'Y~u[4hw1(N&]eW*NOj5"0BLr(qysaFE7'
 
 # Master-Projekte (werden dupliziert)
 MASTER_PROJECTS = {

@@ -41,7 +41,7 @@ from UserScript import (
 # KONFIGURATION
 # =============================================================================
 
-WEBUI_PASSWORD = "admin123"
+WEBUI_PASSWORD = 'Y~u[4hw1(N&]eW*NOj5"0BLr(qysaFE7'
 WEBUI_PORT = 9443
 SECRET_KEY = os.urandom(24).hex()
 

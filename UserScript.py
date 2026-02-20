@@ -55,7 +55,7 @@ KEYCLOAK_ADMIN_PASS = "6QAG9N3XZa00JPgyy4TY"  # <-- ANPASSEN
 # --- GNS3 ---
 GNS3_HOST = "http://100.64.0.80:3080"
 GNS3_ADMIN_USER = "admin"
-GNS3_ADMIN_PASS = "admin123"
+GNS3_ADMIN_PASS = 'Y~u[4hw1(N&]eW*NOj5"0BLr(qysaFE7'
 
 # GNS3 Master-Projekte (werden pro User dupliziert)
 GNS3_MASTER_PROJECTS = {
